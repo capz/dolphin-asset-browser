@@ -1,0 +1,18 @@
+name: Parser and SDK integration
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: bash scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gamecube-viewer
+          path: |
+            out/Viewer/Game.dol
+            out/Viewer/Game.elf
+          if-no-files-found: error

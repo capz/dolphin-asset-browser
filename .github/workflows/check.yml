@@ -1,14 +1,28 @@
-name: Parser and SDK integration
-on: [push, pull_request]
+name: Build and release GameCube DOL
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
       - run: bash scripts/build.sh
+      - name: Package release binary
+        run: |
+          mkdir -p release
+          cp out/Viewer/Game.dol release/dolphin-asset-browser.dol
+          cd release
+          sha256sum dolphin-asset-browser.dol > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: gamecube-viewer
@@ -16,3 +30,62 @@ jobs:
             out/Viewer/Game.dol
             out/Viewer/Game.elf
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dol-release
+          path: release/
+          if-no-files-found: error
+
+  release:
+    needs: check
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name == 'workflow_dispatch' ||
+       startsWith(github.ref, 'refs/tags/v') ||
+       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dol-release
+          path: release
+      - name: Publish DOL release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
+          BUILD_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS
+          options=()
+          if [[ "$BUILD_REF" == refs/tags/v* ]]; then
+            tag="$REF_NAME"
+            title="Dolphin asset browser $tag"
+            options+=(--verify-tag)
+          else
+            tag="build-$RUN_ID-$RUN_ATTEMPT"
+            title="Development build ${BUILD_SHA:0:7}"
+            options+=(--prerelease)
+          fi
+          cat > release-notes.md <<EOF
+          GameCube diagnostic viewer built from commit $BUILD_SHA.
+
+          Download dolphin-asset-browser.dol; SHA256SUMS verifies the binary.
+          Real-disc Booma discovery and hardware validation remain pending.
+
+          Build: $SERVER_URL/$GH_REPO/actions/runs/$RUN_ID
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dolphin-asset-browser.dol SHA256SUMS --clobber
+          else
+            gh release create "$tag" dolphin-asset-browser.dol SHA256SUMS \
+              --target "$BUILD_SHA" --title "$title" --notes-file release-notes.md "${options[@]}"
+          fi

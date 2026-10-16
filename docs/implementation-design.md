@@ -13,7 +13,7 @@ unmodified; recipe selection, disc knowledge and user interaction stay here.
 | Exact PSO revision profiles and content signatures | DiscIdentity header/banner parsing |
 | Booma file/member/texture/motion associations | supported GJ/NJ/REL, GVM/GVR, BML/PRS decoding |
 | Explicit structural loader choice and source motion rate | transforms, materials, skinning and animation conversion |
-| Loading/error/cancel UI, camera and controls | background import, native allocations, model lifetime and rendering |
+| Loading/error UI, camera and controls | background import, native allocations, model lifetime and rendering |
 | Retail-asset integration regressions | binary validation and model-resource format |
 
 No OBJ/FBX intermediate, DNDM package writer or local fallback parser is needed.
@@ -41,9 +41,10 @@ propagate to the application. Selectors such as `archive.bml#member.gj` are
 passed unchanged to the SDK; this project does not unpack supported containers.
 
 The diagnostic viewer mounts GC Loader storage, loads `preview.gj` and an
-optional `preview.gvm`, and renders through the ordinary SDK Renderer. During
-loading it draws empty frames, polls B for cancellation and always awaits import
-completion before releasing the source. During viewing B/Start exits cleanly.
+optional `preview.gvm`, and renders through the ordinary SDK Renderer. It shows
+a loading frame and immediately awaits the import, with no pre-await polling
+loop. The source remains mounted until the await completes. During viewing
+B/Start exits cleanly.
 If a recipe supplies a motion, the returned `Motion` clip is played. Rendering
 and instance updates happen on the application executor; the SDK owns background
 parsing. The fixed camera is still a diagnostic limitation.
@@ -99,7 +100,9 @@ Do not implement a second general-purpose archive/geometry stack speculatively.
 Native parses run outside the managed gate on a single service executor. Parsing
 is not interruptible mid-call; cancellation waits for cleanup and other service
 work queues behind it. Final publication/storage can delay a frame. The viewer
-shows loading status, not invented percentage progress.
+shows static loading status while awaiting completion; input handling
+resumes after loading. The SDK adapter still accepts cancellation tokens for
+callers that need them.
 
 ## Validation
 
@@ -110,7 +113,8 @@ shows loading status, not invented percentage progress.
   winding, rotated nodes, texture pixels, motion evaluation, inline BML/PRS
   texture loading, invalid pointers/indices, truncation, budgets and cleanup.
 - Actual C# recipe/loader adapter through AOT under ASan/UBSan, including forced
-  GC, both loader branches, rendering, missing-texture rejection and pre-cancel.
+  GC and manual scheduler mode, both loader branches, rendering, missing-texture
+  rejection and pre-cancel.
 - Viewer build, GameCube AOT bundle and generated-C syntax checking.
 
 `bash scripts/build.sh` additionally builds the PowerPC ELF and Game.dol using the

@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using Dolphin.Diagnostics;
 using Dolphin.Graphics;
@@ -28,44 +27,35 @@ internal static class Program
             camera.LookAt(new Vector3(0, 2, 5), Vector3.Zero, new Vector3(0, 1, 0));
             var renderer = new Renderer();
             var transform = new Transform();
-            using (var cancellation = new CancellationTokenSource())
+            DebugOverlay.WriteLine("Loading PSO through SDK...");
+            renderer.BeginFrame(camera);
+            renderer.EndFrame();
+            // Await immediately: do not poll before giving the load a chance
+            // to suspend this application flow and dispatch its completion.
+            using (var model = await PsoModelLoader.LoadAsync(recipe))
+            using (var instance = model.CreateInstance())
             {
-                DebugOverlay.WriteLine("Loading PSO through SDK. B cancels; cleanup may take time.");
-                var loading = PsoModelLoader.LoadAsync(recipe, cancellation.Token);
-                while (!loading.IsCompleted)
+                DebugOverlay.WriteLine("SDK PSO preview. B or Start exits.");
+                if (model.TryGetAnimation("Motion", out var motion))
+                    instance.Animator.Play(motion.Name, loop: true);
+                long previous = Clock.Timestamp;
+                while (true)
                 {
                     Controller.Update();
-                    if (Controller.GetState().B.WasPressed) cancellation.Cancel();
+                    var state = Controller.GetState();
+                    if (state.B.WasPressed || state.Start.WasPressed) break;
+                    long now = Clock.Timestamp;
+                    float delta = (float)(now - previous) / 1000000f;
+                    previous = now;
+                    if (delta > .1f) delta = .1f;
+                    instance.Update(delta);
                     renderer.BeginFrame(camera);
+                    renderer.DrawModel(instance, transform);
                     renderer.EndFrame();
-                }
-                // Always await the pending import before releasing its source volume.
-                using (var model = await loading)
-                using (var instance = model.CreateInstance())
-                {
-                    DebugOverlay.WriteLine("SDK PSO preview. B or Start exits.");
-                    if (model.TryGetAnimation("Motion", out var motion))
-                        instance.Animator.Play(motion.Name, loop: true);
-                    long previous = Clock.Timestamp;
-                    while (true)
-                    {
-                        Controller.Update();
-                        var state = Controller.GetState();
-                        if (state.B.WasPressed || state.Start.WasPressed) break;
-                        long now = Clock.Timestamp;
-                        float delta = (float)(now - previous) / 1000000f;
-                        previous = now;
-                        if (delta > .1f) delta = .1f;
-                        instance.Update(delta);
-                        renderer.BeginFrame(camera);
-                        renderer.DrawModel(instance, transform);
-                        renderer.EndFrame();
-                    }
                 }
             }
             return 0;
         }
-        catch (OperationCanceledException) { DebugOverlay.WriteLine("Import canceled."); return 0; }
         catch (Exception error) { DebugOverlay.WriteLine(error.Message); return 1; }
         finally { Storage.Unmount(StorageDevice.GcLoader); }
     }

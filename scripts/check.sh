@@ -41,6 +41,7 @@ cc -pthread -O2 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
   "$sdk/source/graphics_gx.c" "$sdk/source/performance.c" -lm -o "$scratch/pso-smoke"
 timeout 30s "$scratch/pso-smoke" "$scratch/fixtures"
 timeout 30s "$scratch/pso-smoke" "$scratch/fixtures" --gc-stress
+DND_ASYNC_MANUAL=1 timeout 30s "$scratch/pso-smoke" "$scratch/fixtures"
 dotnet build src/Viewer/Viewer.csproj -c Release
 dotnet run --project "$sdk/tools/DolphinDotNet.Compiler" -- \
   --bundle src/Viewer/bin/Release/net8.0/Viewer.dll out/Viewer --platform gamecube

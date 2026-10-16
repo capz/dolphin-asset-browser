@@ -52,10 +52,10 @@ tracked SDK edits are refused.
 
 The viewer loads `gcloader:/preview.gj` directly through `Model.LoadPsoAsync`.
 If `gcloader:/preview.gvm` exists it is supplied as the texture archive. A textured
-model without its textures fails; there is no untextured fallback. B cancels an
-in-flight load (native parsing may finish before cleanup); B or Start exits the
-viewer. The source remains mounted until pending loading and cleanup complete.
-The camera is still fixed.
+model without its textures fails; there is no untextured fallback. The viewer
+shows a loading frame and immediately awaits the SDK load, without polling
+`IsCompleted`. B or Start exits after loading. The source remains mounted until
+loading and cleanup complete. The camera is still fixed.
 
 `src/Pso/PsoAssetRecipe.cs` records model, texture and motion paths, structural
 loader profile, explicit motion frame rate and native budget. `PsoModelLoader`
@@ -84,3 +84,13 @@ SDK importers allocate source data, scratch space and model resources natively.
 The default import budget is 8 MiB (maximum 16 MiB), with a separate instance
 budget. Limits and format subsets still apply; neither a successful build nor
 synthetic fixture tests prove retail Booma compatibility or hardware performance.
+
+## GitHub releases
+
+The build workflow runs tests and produces DOL/ELF artifacts on pushes and pull
+requests. Successful pushes to the repository's default branch also publish a
+prerelease tagged `build-<run-id>-<attempt>` containing
+`dolphin-asset-browser.dol` and `SHA256SUMS`. A manual workflow run produces the
+same kind of prerelease. Push a `v*` tag (for example `v0.1.0`) for a normal
+versioned release. Publishing requires the build job to pass; pull requests never
+publish. Only the release job receives repository write permission.

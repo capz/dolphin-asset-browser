@@ -1,6 +1,6 @@
 # Dolphin asset browser
 
-On-device PSO asset loading on DolphinDotNet. The project is at its first
+On-device Phantasy Star Online I&II asset loading on DolphinDotNet. The project is at its first
 diagnostic milestone; automatic disc-to-Booma extraction is not implemented yet.
 See [the implementation design](docs/implementation-design.md) for scope,
 SDK contracts, memory constraints and remaining milestones.

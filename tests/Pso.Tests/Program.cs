@@ -83,6 +83,7 @@ static class Tests
     }
     static void Main(string[] args)
     {
+        BrowserTests.Run();
         if (args.Length != 1) throw new ArgumentException("Supply fixture output directory.");
         var recipe = new PsoAssetRecipe("dvd:/model.gj", "dvd:/model.gvm");
         Check(recipe.Profile == PsoLoaderProfile.RigidGj && recipe.NativeBudgetBytes == 8 * 1024 * 1024, "strict defaults");
@@ -104,6 +105,9 @@ static class Tests
         Save("strip.gj", Fixture(strip: true));
         byte[] fan = Fixture(strip: true); fan[8 + 208] = 0xa0; Save("fan.gj", fan);
         Save("textured.gj", Fixture(mixed: true, texture: true)); Save("preview.gvm", Texture());
+        Save("textured.gvm", Texture());
+        Directory.CreateDirectory(Path.Combine(sd, "games"));
+        Save("games/test.iso", BrowserTests.Header());
         Save("preview.bml", Bml(Fixture(mixed: true, texture: true), Texture()));
         byte[] motion = new byte[60]; "NMDM"u8.CopyTo(motion);
         BinaryPrimitives.WriteInt32LittleEndian(motion.AsSpan(4), 52);
@@ -121,6 +125,14 @@ static class Tests
         bad = Fixture(); U(bad, 8 + 48, 320); U(bad, 8 + 320, 7); U(bad, 8 + 320 + 48, 320); Save("cycle.gj", bad);
         Save("truncated.gvm", Texture()[..^1]);
         for (int i = 0; i < 8; i++) Save("short-" + i + ".gj", Fixture()[..i]);
+        string loader = Path.Combine(args[0], "gcloader"); Directory.CreateDirectory(loader);
+        File.WriteAllBytes(Path.Combine(loader, "textured.gj"), Fixture(mixed: true, texture: true));
+        File.WriteAllBytes(Path.Combine(loader, "preview.gvm"), Texture());
+        File.WriteAllBytes(Path.Combine(loader, "move.njm"), motion);
+        File.WriteAllText(Path.Combine(loader, "asset.psoasset"),
+            "name=Synthetic\nmodel=textured.gj\ntexture=preview.gvm\nmotion=move.njm\nfps=30\nradius=1");
+        string errorLoader = Path.Combine(args[0], "error", "gcloader"); Directory.CreateDirectory(errorLoader);
+        File.WriteAllText(Path.Combine(errorLoader, "asset.psoasset"), "model=missing.gj\nunknown=yes");
         Console.WriteLine(passed + " recipe assertions passed; generated original SDK integration fixtures.");
     }
 }

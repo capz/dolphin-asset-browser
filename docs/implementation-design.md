@@ -1,148 +1,152 @@
-# PSO asset browser implementation design
+# Asset browser implementation
 
-SDK baseline: `capz/dolphindotnet` commit
-`4b0ace6526d99b9e680b26243af5a0d75cf35314` (`sdk-snapshot.txt`).
-The project delegates supported binary formats to SDK loaders. SDK source is
-unmodified; recipe selection, disc knowledge and user interaction stay here.
+Baseline: DolphinDotNet `f040ec327b63006380a01334463dcb58fd1024ea`, pinned in
+`sdk-snapshot.txt`. Binary format decoding remains in the unmodified SDK.
+The earlier [TEV effect proposal](sdk-model-effects-proposal.md) is a separate,
+unimplemented SDK feature; this browser does not create another renderer.
 
-## Responsibility split
+## Build and debug
 
-| Project | SDK |
+Viewer imports `DolphinDotNet.Sdk` props/targets from the pinned checkout. Its
+MSBuild build produces `Viewer.dol`, ELF and, for Debug, matching managed/native
+source maps. The solution and launch profiles support Visual Studio/Rider and
+Dolphin Play/Debug. The SDK build driver owns native bundle generation, Docker
+proxy/CA forwarding, toolchain selection and stale native-output removal.
+
+`ensure-sdk.sh` initializes the checkout and checks the pin. `check.sh` runs host
+and AOT regressions with the native SDK compiled once into a sanitizer archive.
+`build.sh` adds the actual MSBuild native build and validates DOL sections.
+The release workflow publishes the new SDK output paths. No SDK edits or copied
+compiler code are required. Font rendering links the pinned sample's generated
+bitmap atlas helper; the UI otherwise uses public graphics APIs.
+
+## Responsibilities
+
+| Component | Responsibility |
 | --- | --- |
-| ISO discovery and GC Loader/DVD selection | mounts, file handles and FST validation |
-| Exact PSO revision profiles and content signatures | DiscIdentity header/banner parsing |
-| Booma file/member/texture/motion associations | supported GJ/NJ/REL, GVM/GVR, BML/PRS decoding |
-| Explicit structural loader choice and source motion rate | transforms, materials, skinning and animation conversion |
-| Loading/error UI, camera and controls | background import, native allocations, model lifetime and rendering |
-| Retail-asset integration regressions | binary validation and model-resource format |
+| SourceSession / ISourceMounts | source policy, mount dependencies and cleanup |
+| ImageDiscovery | bounded header-based ISO/GCM discovery, deterministic sorting |
+| AssetPaths | mounted-volume path resolution and selector preservation |
+| AssetDefinition | explicit import settings, optional disc binding and framing |
+| PsoModelLoader | direct dispatch to rigid or extended SDK PSO import |
+| OrbitCamera | bounded camera state using supported MathF/Math APIs |
+| BrowserApp / BrowserUi | screens, input, retry, playback and rendering |
+| SDK | FST/ISO mounting, identity/banner parsing, binary import and rendering |
 
-No OBJ/FBX intermediate, DNDM package writer or local fallback parser is needed.
-The removed managed importer handled only a small static untextured GJ subset;
-maintaining it would duplicate format fixes without covering a missing capability.
-Its useful synthetic fixture ideas now exercise the actual SDK instead.
+## Source policy and screens
 
-## Current project implementation
+Startup first attempts GC Loader storage. If usable, Sources offers extracted
+files, an explicit inserted-disc transition, and candidates from `/games`.
+If unavailable, it attempts the inserted disc. A failed Loader mount is reported
+as unavailable; it does not prove hardware absence. Transitioning to inserted
+media releases the image and raw Loader volume first. Both disc routes use `dvd:/`.
 
-`PsoAssetRecipe` is immutable. It supplies a model path, optional texture/motion
-paths, loader profile, Euler key width, explicit motion rate, native budget and
-explicit material-approximation opt-in. Invalid combinations fail before import.
-A motion requires a verified frame rate; the application never guesses it from
-an extension. Approximation defaults off and is unavailable for rigid GJ.
+The disc root offers an explicit SD2SP2 recipe directory. Profiles under
+`sd:/pso-profiles` resolve model/texture/motion/signature paths against `dvd:/`,
+allowing exact revision profiles for unmodified physical discs. The app mounts
+that optional card only on request and releases it after imports finish. This
+is configuration storage, not a second geometry/archive decoding path.
 
-`PsoModelLoader.LoadAsync` maps recipes directly to:
+SourceSession owns flags only for successful mounts and clears them only after
+successful unmount. Identity-read failure unmounts the partial disc. It keeps
+ownership when unmount fails so cleanup can retry. No model load is left pending
+when mounts are released; instances are disposed before models.
 
-- `RigidGj`: `Model.LoadPsoAsync`, for the verified rigid GJ/GVM/NMDM profile.
-- `NinjaRel`: `Model.LoadPsoEpisode3Async`, for supported extended GJ/NJ/REL,
-  PRS/BML and inline texture layouts. This profile is selected by structure,
-  not an assumption that all Episode I/II assets match Episode III.
+Discovery scans at most 2048 entries, 64 valid images, six directory levels, and
+128 pending directories. Every entry counts, including unrelated files. Reads
+handle short transfers and inspect 0x440-byte GameCube headers. ISO/GCM extension
+matching is case-insensitive; RVZ/CISO and images at least 2 GiB are unsupported.
+Malformed/unreadable images and scan limits are reported. Header validation is
+not proof that the full filesystem or game data is valid.
 
-There are no repeated parser attempts or silent untextured fallbacks. SDK errors
-propagate to the application. Selectors such as `archive.bml#member.gj` are
-passed unchanged to the SDK; this project does not unpack supported containers.
+File listings bound enumeration and show directories first. Raw models use the
+user-selected rigid/extended import mode; recipes override it. There is no
+repeated-parser probing or silent texture loss. A same-stem GVM may accompany a
+manual file, but motion settings are never guessed from filenames.
 
-The diagnostic viewer mounts GC Loader storage, loads `preview.gj` and an
-optional `preview.gvm`, and renders through the ordinary SDK Renderer. It shows
-a loading frame and immediately awaits the import, with no pre-await polling
-loop. The source remains mounted until the await completes. During viewing
-B/Start exits cleanly.
-If a recipe supplies a motion, the returned `Motion` clip is played. Rendering
-and instance updates happen on the application executor; the SDK owns background
-parsing. The fixed camera is still a diagnostic limitation.
+Screens are Sources, Files, Loading, Inspector and Error. Operations preserve
+stage/path/error context. X retries the same failed operation; B returns to
+source selection. A loading frame is presented followed by a direct SDK await,
+without IsCompleted polling. Input resumes after loading. The source remains
+owned throughout await and cleanup. No invented percentage progress is shown.
 
-Recipe/adapter sources are compiled into Viewer and the AOT smoke entry assembly
-because the pinned compiler discovers SDK-named dependencies only. This keeps
-application code local without runtime or compiler modifications.
+## Recipe validation
 
-## Target disc-to-Booma flow (still planned)
+Recipes are bounded UTF-8 text files with key=value fields: at most 16 KiB and
+64 lines. Duplicate, empty and unknown fields fail. Model, texture and motion
+paths normalize dot segments, remain on the source volume, and permit one SDK
+member selector. Model profile, Euler key size, native budget and source motion
+frame rate are explicit and validated.
 
-1. Attempt GC Loader storage. Discover ISO/GCM candidates under `/games`, bounded
-   by depth, file count and path length. Read 0x440-byte candidate headers using
-   `DiscIdentity.ParseHeader`; sort matching candidates and offer selection.
-2. If GC Loader cannot mount, try `Storage.MountDisc()` for the inserted game.
-   Probe results cannot prove GC Loader absence; report inaccessible media
-   accurately. Do not use raw GC Loader and inserted/ODE disc modes concurrently.
-3. Mount a selected image with `Storage.MountDisc(fullImagePath)`. Both routes
-   expose `dvd:/`. Use `Storage.GetMountedDiscIdentity()` and match the exact
-   `(GameId, DiscNumber, Revision)`, then verify file/member signatures. Banners
-   and titles are display data, not matching criteria.
-4. A verified revision profile resolves Booma's model, texture and motion paths
-   into a recipe. No enabled retail profiles exist until the actual data is
-   inspected. Determine whether Booma is GJ or an embedded NJ/REL variant.
-5. Load directly from `dvd:/` with the appropriate SDK API; no extracted package
-   or writable storage is required. Validate source motions and material settings.
-6. Frame the loaded model, offer orbit/zoom/reset and diagnostics. Dispose the
-   instance before model, close streams and finish pending loads, unmount `dvd:/`,
-   then unmount its backing GC Loader volume.
+Optional framing consists of center XYZ and radius. Radius is 0.001..10000,
+center magnitude is bounded, and non-finite values fail. Without bounds, the
+viewer uses a unit guess plus manual controls; it cannot obtain aggregate bounds
+from the SDK's current public Model API.
 
-The new SDK renamed `MountGameCubeDisc()` to `MountDisc()` and
-`DiscFormat.GameCubeFst` to `DiscFormat.Fst`. Only original ISO/GCM is supported;
-compressed ISO containers are not. The native image-file cap remains below 2 GiB.
+Disc-bound recipes require all of GameId, disc index, revision, signature path
+and signature hex. Identity must match exactly and a 1..64-byte file prefix must
+match before import. This is a revision/profile guard, not a full-disc hash or
+cryptographic provenance check. Unbound recipes are labeled manual imports.
 
-## Memory and API limits
+No enabled retail Booma profile is included. Real model/member/texture/motion
+paths and signatures still need verification from a user's supported PSO disc.
+There is no filename/title-based claim that an imported model is Booma.
 
-The application no longer holds complete model input, expanded vertex arrays and
-DNDM output in the 256 KiB managed heap. SDK native import budgets (default 8 MiB,
-maximum 16 MiB) include input, temporary data, texture expansion, package creation
-and publication overlap. Instance resources have a separate budget. This reduces
-managed-heap pressure; it does not guarantee a lower total peak or frame time.
+## Inspector
 
-Ordinary PSO source files are capped at 2 MiB each. The extended loader reads
-whole source files with a 16 MiB ceiling, still subject to its complete native
-budget. GVM textures expand to tiled RGBA8, with no generated mipmaps on these
-PSO import paths. Measure actual Booma import/native/instance peaks before
-choosing budgets. No automatic reduction in detail or dropped materials.
+The left stick orbits; C-stick pans; analog triggers zoom. Y restores framing
+and model rotation, Z toggles automatic rotation. Camera math clamps pitch and
+distance. FrameClock bounds delta and resets after loading.
 
-The SDK BML adapter currently permits at most 31 entries and rejects multiple
-`#` selectors. Complex nested selection may therefore require SDK changes or a
-narrow project adapter, but only after demonstrating a real unsupported asset.
-Do not implement a second general-purpose archive/geometry stack speculatively.
+D-pad up/down selects clips or rest pose, A pauses/resumes, left/right seeks by
+0.25 seconds, and X cycles 0.25/0.5/1/2 speed. Playback time is tracked locally
+because the SDK does not expose time readback; all control changes are mirrored
+to Animator. B disposes the model and returns to the existing listing.
 
-Native parses run outside the managed gate on a single service executor. Parsing
-is not interruptible mid-call; cancellation waits for cleanup and other service
-work queues behind it. Final publication/storage can delay a frame. The viewer
-shows static loading status while awaiting completion; input handling
-resumes after loading. The SDK adapter still accepts cancellation tokens for
-callers that need them.
+The overlay shows identity, recipe name, source paths, importer/budget, model and
+instance native bytes, node count and playback state. Numeric text is refreshed
+at four Hz; static source labels are cached. Graphics remain on the application
+executor with explicit 3D/2D pass boundaries. Authored materials are untouched.
 
-## Validation
+## Memory and limits
 
-`bash scripts/check.sh` checks the SDK pin and runs:
+Imports use SDK native allocations and their existing budgets (default 8 MiB,
+maximum 16 MiB), with a separate instance budget. Temporary input, decompression,
+texture expansion and publication overlap all count. Ordinary PSO source files
+are limited to 2 MiB each; extended input can reach 16 MiB only within its complete
+budget. No automatic geometry reduction or material approximation is enabled.
 
-- Project recipe validation and original GJ/GVM/NMDM/BML fixture generation.
-- SDK native import tests under ASan/UBSan: mixed index widths, list/strip/fan
-  winding, rotated nodes, texture pixels, motion evaluation, inline BML/PRS
-  texture loading, invalid pointers/indices, truncation, budgets and cleanup.
-- Actual C# recipe/loader adapter through AOT under ASan/UBSan, including forced
-  GC and manual scheduler mode, both loader branches, rendering, missing-texture
-  rejection and pre-cancel.
-- Viewer build, GameCube AOT bundle and generated-C syntax checking.
+The SDK still has format restrictions, whole-file imports, a 31-entry BML limit
+and one-selector restrictions. The browser surfaces failures and permits explicit
+recipes; it does not implement another archive/geometry stack speculatively.
 
-`bash scripts/build.sh` additionally builds the PowerPC ELF and Game.dol using the
-SDK CI toolchain pinned by digest in `toolchain-image.txt`, then validates DOL
-sections. HTTPS verification remains enabled, using host trust in the container.
-The SDK's upstream suite covers additional format variants; these project tests
-focus on our integration contract rather than reimplementing its format tests.
+## Validation boundaries
 
-Synthetic success does not prove retail assets, actual GC Loader/DVD reads,
-visual fidelity, hardware memory peaks or loading responsiveness. No physical
-hardware or emulator acceptance is claimed.
+The host suite covers source policy, unmount order/failure, path containment,
+exact disc/content checks, recipe rejection, bounded discovery and camera math.
+Synthetic GJ/GVM/NMDM/BML fixtures exercise the actual SDK's native importer under
+ASan/UBSan, including invalid data, textures, motion and cleanup. The managed
+adapter and browser core also run through AOT under normal/forced GC and manual
+scheduler mode.
 
-The migrated snapshot passed the complete `scripts/build.sh` run: 12 recipe
-assertions, 163 SDK-native assertions, both AOT smoke runs (the stress run made
-82 collections), viewer compilation, PowerPC ELF linking, DOL conversion and
-section validation. The SDK checkout has no source modifications.
+A host-driven interactive AOT test navigates Sources to Files, loads a recipe,
+uses camera/playback controls, returns to Files and exits, checking model/file/
+graphics resource and mount cleanup. Its graphics backend is headless: it proves
+control flow and ownership, not pixels. The native GameCube build verifies the
+actual PowerPC toolchain and DOL layout. Physical drive access and visual fidelity
+still require Dolphin/console acceptance with representative assets.
 
-## Remaining milestones
+The implementation passed 38 browser assertions, 12 recipe assertions and 163
+SDK-native assertions. AOT adapter tests passed normally, under forced GC and
+with manual scheduling. The interactive host tests passed navigation/playback,
+forced GC and persistent error/retry/back/exit scenarios. Release and Debug DOL
+builds passed, and Debug generated matching ELF/source-map artifacts. IDE attach
+itself and physical-console visuals were not exercised.
 
-1. Verify a real PSO revision and Booma asset map; choose the structural recipe.
-2. Add source selection, catalog, bounded discovery and mounted-disc checks.
-3. Add camera framing/orbit and useful error/retry screens.
-4. Compare real Booma textures, winding, normals, pose and motion independently;
-   validate GC Loader and original-disc routes separately on hardware.
-5. Extend SDK support or add a narrow local adapter only for confirmed gaps.
-6. Optional caching and additional games/revisions follow acceptance.
+## Remaining acceptance work
 
-References:
-- [Pinned SDK](https://github.com/capz/dolphindotnet/tree/4b0ace6526d99b9e680b26243af5a0d75cf35314)
-- [SDK on-device importer contract](https://github.com/capz/dolphindotnet/blob/4b0ace6526d99b9e680b26243af5a0d75cf35314/docs/model-source-import.md)
-- [Extended PSO profile](https://github.com/capz/dolphindotnet/blob/4b0ace6526d99b9e680b26243af5a0d75cf35314/docs/pso-episode3-loading.md)
+- Verify Booma asset maps and source motion settings for actual PSO revisions.
+- Compare real geometry, textures, normals, alpha and motion independently.
+- Validate GC Loader firmware/card access and original DVD reads separately.
+- Measure real import/frame/memory costs; exercise media removal and long paths.
+- Add automatic bounds/material metadata only through a deliberate SDK API.

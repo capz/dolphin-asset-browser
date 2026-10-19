@@ -20,15 +20,15 @@ jobs:
       - name: Package release binary
         run: |
           mkdir -p release
-          cp out/Viewer/Game.dol release/dolphin-asset-browser.dol
+          cp src/Viewer/bin/Release/net8.0/Viewer.dol release/dolphin-asset-browser.dol
           cd release
           sha256sum dolphin-asset-browser.dol > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: gamecube-viewer
           path: |
-            out/Viewer/Game.dol
-            out/Viewer/Game.elf
+            src/Viewer/bin/Release/net8.0/Viewer.dol
+            src/Viewer/bin/Release/net8.0/Viewer.elf
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
@@ -76,10 +76,10 @@ jobs:
             options+=(--prerelease)
           fi
           cat > release-notes.md <<EOF
-          GameCube diagnostic viewer built from commit $BUILD_SHA.
+          GameCube asset browser and model inspector built from commit $BUILD_SHA.
 
           Download dolphin-asset-browser.dol; SHA256SUMS verifies the binary.
-          Real-disc Booma discovery and hardware validation remain pending.
+          Verified retail Booma profiles and hardware validation remain pending.
 
           Build: $SERVER_URL/$GH_REPO/actions/runs/$RUN_ID
           EOF

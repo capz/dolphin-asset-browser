@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/Pso/*.cs" Link="Pso/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Browser/*.cs" Link="Browser/%(Filename)%(Extension)" />
     <ProjectReference Include="../../.dependencies/dolphindotnet/src/DolphinDotNet.GameCube/DolphinDotNet.GameCube.csproj" />
   </ItemGroup>
 </Project>

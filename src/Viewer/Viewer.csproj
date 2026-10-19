@@ -1,14 +1,19 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+  <Import Project="../../.dependencies/dolphindotnet/sdk/DolphinDotNet.Sdk/Sdk/Sdk.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DndSampleControls>false</DndSampleControls>
   </PropertyGroup>
   <ItemGroup>
     <!-- The AOT compiler follows SDK assemblies; link our small application
          recipe/adapter into the entry assembly. No local format parser. -->
     <Compile Include="../Pso/*.cs" Link="Pso/%(Filename)%(Extension)" />
+    <Compile Include="../Browser/*.cs" Link="Browser/%(Filename)%(Extension)" />
+    <Compile Include="../../.dependencies/dolphindotnet/samples/Common/SampleText.cs" Link="UiText.cs" />
     <ProjectReference Include="../../.dependencies/dolphindotnet/src/DolphinDotNet.GameCube/DolphinDotNet.GameCube.csproj" />
   </ItemGroup>
+  <Import Project="../../.dependencies/dolphindotnet/sdk/DolphinDotNet.Sdk/Sdk/Sdk.targets" />
 </Project>

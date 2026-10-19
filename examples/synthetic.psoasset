@@ -1,0 +1,13 @@
+# Copy beside the generated synthetic test assets, not retail game files.
+name=Synthetic textured triangle
+profile=rigid
+model=textured.gj
+texture=preview.gvm
+motion=move.njm
+fps=30
+eulerKeyBytes=16
+nativeBudgetBytes=8388608
+centerX=0.5
+centerY=0.5
+centerZ=0
+radius=1

@@ -2,3 +2,6 @@
 **/bin/
 **/obj/
 out/
+**/DolphinDotNet.local.props
+.idea/
+.vs/

@@ -1,9 +1,10 @@
 # Asset browser implementation
 
-Baseline: DolphinDotNet `f040ec327b63006380a01334463dcb58fd1024ea`, pinned in
+Baseline: DolphinDotNet `330138646de7fa57a20863b5bd5116963a2df50e`, pinned in
 `sdk-snapshot.txt`. Binary format decoding remains in the unmodified SDK.
-The earlier [TEV effect proposal](sdk-model-effects-proposal.md) is a separate,
-unimplemented SDK feature; this browser does not create another renderer.
+The earlier [TEV effect proposal](sdk-model-effects-proposal.md) is implemented
+by the SDK. The browser uses its per-draw override for Original/Color ramp/Toon;
+see [the API assessment](tev-api-assessment.md). It does not create another renderer.
 
 ## Build and debug
 

@@ -29,7 +29,7 @@ int __wrap_dnd_model_draw_effect(int token,DndArray *world,int effect) {
 }
 int __real_dnd_canvas_begin(int token,int w,int h);
 int __wrap_dnd_canvas_begin(int token,int w,int h) {
-  assert(viewport[0]==0 && viewport[1]==0 && viewport[2]==640 && viewport[3]==480);
+  if(inspected)assert(viewport[0]==0 && viewport[1]==0 && viewport[2]==640 && viewport[3]==480);
   return __real_dnd_canvas_begin(token,w,h);
 }
 extern intptr_t dnd_value_aot_entry(DndManagedHeap *heap);

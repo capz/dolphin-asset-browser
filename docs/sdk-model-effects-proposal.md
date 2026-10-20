@@ -1,5 +1,9 @@
 # SDK proposal: TEV effect overrides for imported model draws
 
+Historical proposal: the pinned SDK now implements the per-draw override first
+increment. See [the current assessment](tev-api-assessment.md) for implementation
+coverage, browser integration, validation and remaining gaps.
+
 Implementation handoff, based on DolphinDotNet commit
 `f040ec327b63006380a01334463dcb58fd1024ea`. All APIs below are proposed, not
 present in that snapshot. Implement this in the SDK; the asset browser should

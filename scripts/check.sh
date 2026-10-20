@@ -6,6 +6,16 @@ sdk=.dependencies/dolphindotnet
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 dotnet run --project tests/Pso.Tests -c Release -- "$scratch/fixtures"
+# Exercise production GX submission and the shared TEV binder, including alpha,
+# sampler state, effect/default restoration and rejection before submission.
+cc -pthread -DDND_MODEL_GX_TEST -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+  -ffunction-sections -fdata-sections -std=c11 -Wall -Wextra -Werror \
+  -I"$sdk/tests/model_effect_sdk" -I"$sdk/include" "$sdk/tests/model_effect_test.c" \
+  "$sdk/source/managed_runtime.c" "$sdk/source/async_runtime.c" "$sdk/source/model.c" \
+  "$sdk/source/model_animation.c" "$sdk/source/model_graphics.c" "$sdk/source/graphics_device.c" \
+  "$sdk/source/draw_resources.c" "$sdk/source/performance.c" \
+  -Wl,--gc-sections,--wrap=malloc,--wrap=calloc,--wrap=realloc -lm -o "$scratch/model-effects"
+"$scratch/model-effects"
 # Compile the pinned SDK runtime once; all native and AOT harnesses share it.
 mkdir -p "$scratch/objects"
 sources=(managed_runtime async_runtime storage aram timing numeric text input
@@ -40,7 +50,7 @@ cc -pthread -O0 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
   -std=c11 -Wall -Wextra -Werror -I"$sdk/include" -c "$scratch/viewer.c" -o "$scratch/viewer.o"
 cc -pthread -g -fsanitize=address,undefined -fno-sanitize-recover=all \
   -std=c11 -Wall -Wextra -Werror -I"$sdk/include" "$scratch/viewer.o" tests/browser_host.c \
-  "$scratch/runtime.a" -lm -o "$scratch/browser-test"
+  "$scratch/runtime.a" -Wl,--wrap=dnd_model_draw_effect,--wrap=dnd_draw_backend_viewport,--wrap=dnd_canvas_begin -lm -o "$scratch/browser-test"
 timeout 30s "$scratch/browser-test" "$scratch/fixtures"
 timeout 30s "$scratch/browser-test" "$scratch/fixtures" --gc-stress
 timeout 30s "$scratch/browser-test" "$scratch/fixtures/error" --error

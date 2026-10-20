@@ -19,6 +19,28 @@ internal sealed class BrowserUi : IDisposable
     }
     internal void Begin() => device.BeginFrame(new Color32(15, 24, 36));
     internal void BeginText() => draw.Begin();
+    internal float ModelAspect => (device.Width - device.Width * 2 / 3) / (float)device.Height;
+    internal void ModelViewport()
+    {
+        int x = device.Width * 2 / 3;
+        device.SetViewport(x, 0, device.Width - x, device.Height);
+        device.SetScissor(x, 0, device.Width - x, device.Height);
+    }
+    internal void FullViewport()
+    {
+        device.SetViewport(0, 0, device.Width, device.Height);
+        device.SetScissor(0, 0, device.Width, device.Height);
+    }
+    internal void InspectorLine(string value, int row, bool highlighted = false)
+    {
+        if (value.Length > 48) value = value.Substring(0, 45) + "...";
+        Line(value, row, highlighted);
+    }
+    internal void InspectorPath(string value, int row)
+    {
+        InspectorLine(value.Length > 48 ? value.Substring(0, 48) : value, row);
+        if (value.Length > 48) InspectorLine(value.Substring(48), row + 1);
+    }
     internal void Line(string value, int row, bool highlighted = false)
     {
         if (value.Length > 72) value = value.Substring(0, 69) + "...";

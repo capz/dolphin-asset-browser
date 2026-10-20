@@ -38,6 +38,7 @@ internal sealed class BrowserApp : IDisposable
     private PsoLoaderProfile rawProfile = PsoLoaderProfile.RigidGj;
     private Model? model;
     private ModelInstance? instance;
+    private ModelEffects? effects;
     private AssetDefinition? asset;
     private Camera camera = new Camera();
     private int clip = -1, speedIndex = 2;
@@ -145,9 +146,12 @@ internal sealed class BrowserApp : IDisposable
             ModelInstance created;
             try { created = loaded.CreateInstance(); }
             catch { loaded.Dispose(); throw; }
-            ReleaseModel(); model = loaded; instance = created; asset = definition;
-            orbit.Reset(definition.CenterX, definition.CenterY, definition.CenterZ, definition.Radius);
-            camera = new Camera(60, 4f / 3f, MathF.Max(.001f, definition.Radius * .001f), MathF.Max(100, definition.Radius * 200));
+            ModelEffects createdEffects;
+            try { createdEffects = new ModelEffects(); }
+            catch { created.Dispose(); loaded.Dispose(); throw; }
+            ReleaseModel(); model = loaded; instance = created; asset = definition; effects = createdEffects;
+            orbit.Reset(definition.CenterX, definition.CenterY, definition.CenterZ, definition.Radius, ui.ModelAspect);
+            camera = new Camera(60, ui.ModelAspect, MathF.Max(.001f, definition.Radius * .001f), MathF.Max(100, definition.Radius * 200));
             clip = -1; clipTime = 0; speedIndex = 2; paused = autoRotate = false;
             transform.LocalRotation = Quaternion.Identity;
             clock.Reset(); lastFrame = 0; statsDelay = 0; screen = Screen.Inspector;
@@ -194,12 +198,14 @@ internal sealed class BrowserApp : IDisposable
             if (pad.B.WasPressed) { ReleaseModel(); screen = Screen.Files; return; }
             if (pad.Y.WasPressed)
             {
-                orbit.Reset(asset.CenterX, asset.CenterY, asset.CenterZ, asset.Radius);
+                orbit.Reset(asset.CenterX, asset.CenterY, asset.CenterZ, asset.Radius, ui.ModelAspect);
                 transform.LocalRotation = Quaternion.Identity;
             }
             if (pad.Z.WasPressed) autoRotate = !autoRotate;
             if (autoRotate) transform.Rotate(0, dt * 20, 0);
-            orbit.Update(dt, pad.Stick.X, -pad.Stick.Y, pad.CStick.X, pad.CStick.Y, pad.LeftTrigger - pad.RightTrigger);
+            // Reserve L as the effect modifier; no zoom while it is held.
+            orbit.Update(dt, pad.Stick.X, -pad.Stick.Y, pad.CStick.X, pad.CStick.Y,
+                pad.L.IsHeld ? 0 : pad.LeftTrigger - pad.RightTrigger);
             camera.LookAt(new Vector3(orbit.EyeX, orbit.EyeY, orbit.EyeZ),
                 new Vector3(orbit.TargetX, orbit.TargetY, orbit.TargetZ), new Vector3(0, 1, 0));
             if (pad.DPadUp.WasPressed || pad.DPadDown.WasPressed)
@@ -213,7 +219,10 @@ internal sealed class BrowserApp : IDisposable
             if (pad.A.WasPressed && clip >= 0)
             { paused = !paused; if (paused) instance.Animator.Pause(); else instance.Animator.Resume(); }
             if (pad.X.WasPressed)
-            { speedIndex = (speedIndex + 1) % speeds.Length; instance.Animator.SetSpeed(speeds[speedIndex]); }
+            {
+                if (pad.L.IsHeld) effects?.Next();
+                else { speedIndex = (speedIndex + 1) % speeds.Length; instance.Animator.SetSpeed(speeds[speedIndex]); }
+            }
             if (clip >= 0)
             {
                 float duration = model.Animations[clip].DurationSeconds;
@@ -228,7 +237,7 @@ internal sealed class BrowserApp : IDisposable
             statsDelay -= dt;
             if (statsDelay <= 0)
             {
-                statistics = $"NODES {model.NodeCount}  MODEL {model.NativeBytes:N0}  INSTANCE {instance.NativeBytes:N0} BYTES";
+                statistics = $"NODES {model.NodeCount} M {model.NativeBytes:N0} I {instance.NativeBytes:N0} B";
                 playback = clip < 0 ? "REST POSE" : $"{model.Animations[clip].Name}  {clipTime:F2}/{model.Animations[clip].DurationSeconds:F2}S  {speeds[speedIndex]:F2}X" + (paused ? " PAUSED" : "");
                 frameMetrics = $"FRAME {frameMilliseconds:F1} MS";
                 statsDelay = .25f;
@@ -264,15 +273,24 @@ internal sealed class BrowserApp : IDisposable
         ui.Begin();
         if (screen == Screen.Inspector && instance != null)
         {
+            ui.ModelViewport();
             renderer.Begin3D(camera);
-            try { renderer.DrawModel(instance, transform); }
-            finally { renderer.End3D(); }
+            try { renderer.DrawModel(instance, transform, effects?.Current); }
+            finally { renderer.End3D(); ui.FullViewport(); }
         }
         ui.BeginText();
         ui.Line("DOLPHIN ASSET BROWSER", 0, true);
         if (screen != Screen.Inspector) ui.Banner();
-        ui.Line(sourceTitle, 3);
-        if (discMetadata.Length != 0) ui.Line(discMetadata, 4);
+        if (screen == Screen.Inspector)
+        {
+            ui.InspectorLine(sourceTitle, 2);
+            if (discMetadata.Length != 0) ui.InspectorLine(discMetadata, 3);
+        }
+        else
+        {
+            ui.Line(sourceTitle, 3);
+            if (discMetadata.Length != 0) ui.Line(discMetadata, 4);
+        }
         if (screen == Screen.Error)
         {
             ui.Line("OPERATION FAILED", 6, true); ui.Line(loadDetails, 7); ui.Line(stage, 8); ui.Line(retryPath, 9);
@@ -284,15 +302,18 @@ internal sealed class BrowserApp : IDisposable
         { ui.Line("LOADING - AWAITING SDK", 8, true); ui.Line(status, 10); ui.Line("SOURCE REMAINS MOUNTED UNTIL COMPLETION", 14); }
         else if (screen == Screen.Inspector && asset != null)
         {
-            ui.Line(asset.Name, 5, true); ui.Line(statistics, 6); ui.Line(playback, 7);
-            ui.Line(loadDetails, 8);
-            ui.Line(frameMetrics, 9); ui.Line(status, 10);
-            ui.Line(asset.Recipe.TexturePath ?? "NO EXTERNAL TEXTURE ARCHIVE", 15);
-            ui.Line(asset.Recipe.MotionPath ?? "NO EXTERNAL MOTION", 16);
-            ui.Line(asset.Recipe.ModelPath, 17);
-            ui.Line("STICK ORBIT  C-STICK PAN  L/R ZOOM  Y RESET  Z ROTATE", 18);
-            ui.Line("UP/DOWN CLIP  A PAUSE  LEFT/RIGHT SEEK  X SPEED", 19);
-            ui.Line("B FILES  START EXIT", 20, true);
+            ui.InspectorLine(asset.Name, 4, true); ui.InspectorLine(statistics, 5); ui.InspectorLine(playback, 6);
+            ui.InspectorLine(loadDetails, 7);
+            ui.InspectorLine(frameMetrics, 8); ui.InspectorLine(status, 9);
+            ui.InspectorLine("EFFECT: " + (effects?.Name ?? "ORIGINAL"), 10, true);
+            ui.InspectorPath(asset.Recipe.TexturePath ?? "NO EXTERNAL TEXTURE ARCHIVE", 11);
+            ui.InspectorPath(asset.Recipe.MotionPath ?? "NO EXTERNAL MOTION", 13);
+            ui.InspectorPath(asset.Recipe.ModelPath, 15);
+            ui.InspectorLine("STICK ORBIT  C-STICK PAN", 17);
+            ui.InspectorLine("L/R ZOOM  Y RESET  Z ROTATE", 18);
+            ui.InspectorLine("UP/DOWN CLIP  A PAUSE  X SPEED", 19);
+            ui.InspectorLine("LEFT/RIGHT SEEK  HOLD L + X EFFECT", 20);
+            ui.InspectorLine("B FILES  START EXIT", 21, true);
         }
         else
         {
@@ -307,6 +328,7 @@ internal sealed class BrowserApp : IDisposable
     }
     private void ReleaseModel()
     {
+        if (effects != null) { effects.Dispose(); effects = null; }
         if (instance != null) { instance.Dispose(); instance = null; }
         if (model != null) { model.Dispose(); model = null; }
         asset = null;

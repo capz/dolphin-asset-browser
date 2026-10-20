@@ -121,7 +121,23 @@ because its filename or disc title looks similar. Original discs remain read-onl
 - Y: reset to recipe framing; Z: toggle slow automatic model rotation.
 - D-pad up/down: choose a clip or rest pose.
 - A: pause/resume; left/right: seek by 0.25 seconds; X: cycle playback speed.
+- Hold digital L + X: cycle Original, Color ramp and Toon. X alone still changes
+  playback speed. Digital L suppresses zoom while held as the effect modifier.
 - B: return to files; Start: exit.
+
+The approved inspector layout uses the left two-thirds for text and the right
+third for the model, with a matching camera aspect, viewport and scissor. Paths
+wrap across two rows (longer tails are truncated). The existing bitmap font,
+background, highlight colors and source/banner assets are retained. Statistics
+use M/I/B for model bytes, instance bytes and bytes.
+
+Effects are created once when loading a model, outside a frame, and disposed
+when leaving it. Original is the default on every load. Overrides are passed per
+draw; they do not modify imported materials or shared models. Ramp and Toon use
+the existing inspector palette and replace texture RGB with raster-driven color
+(Toon thresholds raster red). Imported texture alpha, cutouts, blending, depth,
+samplers and skinning remain the SDK's responsibility. These are inspection
+views, not faithful reconstructions of authored PSO TEV materials.
 
 The inspector shows source/disc identity, loader profile/budget, model and instance
 native bytes, node count, clip time/duration/speed, and asset paths. Models without
@@ -148,3 +164,4 @@ PRs never publish. Only the release job receives repository write permission.
 See [the implementation design](docs/implementation-design.md) for the remaining
 retail-asset and hardware acceptance work. A successful build or synthetic test is
 not evidence of real Booma compatibility, original-disc access or visual fidelity.
+See [the TEV API assessment](docs/tev-api-assessment.md) for SDK coverage and gaps.

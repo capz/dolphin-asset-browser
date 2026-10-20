@@ -32,12 +32,50 @@ internal static class Program
                 instance.Animator.Play("Motion"); instance.Update(.5f);
                 float[] identity = new float[16]; identity[0] = identity[5] = identity[10] = identity[15] = 1;
                 var renderer = new Renderer();
-                renderer.BeginFrame(identity, identity); renderer.DrawModel(instance, identity); renderer.EndFrame();
+                using (var effects = new ModelEffects())
+                {
+                    if (effects.Current != null || effects.Name != "ORIGINAL") return 11;
+                    var transform = new Transform();
+                    renderer.BeginFrame(identity, identity);
+                    renderer.DrawModel(instance, transform, effects.Current);
+                    effects.Next();
+                    if (effects.Current == null || effects.Current.RequiresTexture || effects.Current.StageCount != 2) return 12;
+                    renderer.DrawModel(instance, transform, effects.Current);
+                    effects.Next();
+                    if (effects.Current == null || effects.Current.RequiresTexture || effects.Current.StageCount != 7) return 13;
+                    renderer.DrawModel(instance, identity, effects.Current);
+                    effects.Next();
+                    if (effects.Current != null) return 14;
+                    renderer.DrawModel(instance, identity, effects.Current);
+                    renderer.EndFrame();
+                    effects.Next(); effects.Reset();
+                    if (effects.Selection != 0) return 15;
+                    effects.Dispose(); effects.Dispose();
+                    try { effects.Next(); return 16; }
+                    catch (ObjectDisposedException) { }
+                }
             }
             using (var extended = await PsoModelLoader.LoadAsync(new PsoAssetRecipe(
                 "sd:/preview.bml#preview.gj", profile: PsoLoaderProfile.NinjaRel)))
             using (var instance = extended.CreateInstance())
+            using (var effects = new ModelEffects())
+            {
                 if (extended.NodeCount != 1) return 3;
+                effects.Next();
+                var renderer = new Renderer(); var camera = new Camera();
+                renderer.BeginFrame(camera); renderer.DrawModel(instance, new Transform(), effects.Current); renderer.EndFrame();
+            }
+            // Both presets must also accept an untextured imported model.
+            using (var plain = await PsoModelLoader.LoadAsync(new PsoAssetRecipe("sd:/plain.gj")))
+            using (var instance = plain.CreateInstance())
+            using (var effects = new ModelEffects())
+            {
+                var renderer = new Renderer(); var camera = new Camera(); var transform = new Transform();
+                renderer.BeginFrame(camera);
+                effects.Next(); renderer.DrawModel(instance, transform, effects.Current);
+                effects.Next(); renderer.DrawModel(instance, transform, effects.Current);
+                renderer.DrawModel(instance, transform, null); renderer.EndFrame();
+            }
             using (var cancellation = new CancellationTokenSource())
             {
                 cancellation.Cancel();

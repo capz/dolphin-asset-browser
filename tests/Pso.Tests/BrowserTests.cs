@@ -83,6 +83,11 @@ internal static class BrowserTests
         mounts.FailUnmount = false; session.Dispose();
         var camera = new OrbitCamera(); camera.Reset(1, 2, 3, 2);
         Check(camera.Distance == 6 && camera.TargetY == 2, "camera framing");
+        camera.Reset(1, 2, 3, 2, 214f / 480f);
+        float halfFov = MathF.Atan(MathF.Tan(MathF.PI / 6) * (214f / 480f));
+        Check(camera.Distance * MathF.Sin(halfFov) > 2, "sphere fits narrow model viewport");
+        Reject(() => camera.Reset(aspect: 0));
+        Reject(() => camera.Reset(aspect: float.NaN));
         camera.Update(.1f, 1, 100, 0, 0, -1000);
         Check(camera.Pitch <= 1.45f && camera.Distance >= .1f && float.IsFinite(camera.EyeX), "camera clamps");
         Reject(() => camera.Reset(radius: float.PositiveInfinity));

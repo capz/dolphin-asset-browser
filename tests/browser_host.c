@@ -12,6 +12,26 @@
 static unsigned polls, errors;
 static bool inspected;
 static bool error_mode;
+static int viewport[4], effect_draws[3];
+void __real_dnd_draw_backend_viewport(int x,int y,int w,int h);
+void __wrap_dnd_draw_backend_viewport(int x,int y,int w,int h) {
+  viewport[0]=x;viewport[1]=y;viewport[2]=w;viewport[3]=h;
+  __real_dnd_draw_backend_viewport(x,y,w,h);
+}
+int __real_dnd_model_draw_effect(int token,DndArray *world,int effect);
+int __wrap_dnd_model_draw_effect(int token,DndArray *world,int effect) {
+  assert(viewport[0]==426 && viewport[1]==0 && viewport[2]==214 && viewport[3]==480);
+  const DndDrawEffect *program=NULL;assert(dnd_effect_resolve(effect,&program)==0);
+  int selection=program ? (program->count==2 ? 1 : 2) : 0;
+  if(program)assert(!program->texture && (program->count==2 || program->count==7));
+  effect_draws[selection]++;
+  return __real_dnd_model_draw_effect(token,world,effect);
+}
+int __real_dnd_canvas_begin(int token,int w,int h);
+int __wrap_dnd_canvas_begin(int token,int w,int h) {
+  assert(viewport[0]==0 && viewport[1]==0 && viewport[2]==640 && viewport[3]==480);
+  return __real_dnd_canvas_begin(token,w,h);
+}
 extern intptr_t dnd_value_aot_entry(DndManagedHeap *heap);
 void dnd_console_write_line(const char *message) { errors++; fprintf(stderr,"Browser error: %s\n",message); }
 void dnd_input_backend_init(void) {}
@@ -30,7 +50,7 @@ void dnd_input_backend_sample(DndInputSample pads[4]) {
   }
   // Release between each press. First choose extracted files, then asset.psoasset.
   if (step == 1 || step == 3) pads[0].held = 0x100;
-  if (step >= 4 && step < 15) {
+  if (step >= 4 && step < 21) {
     assert(dnd_model_live_handles() == 2);
     inspected = true;
     pads[0].stick_x = 32; pads[0].cstick_y = 24; pads[0].trigger_r = 90;
@@ -38,10 +58,11 @@ void dnd_input_backend_sample(DndInputSample pads[4]) {
     if (step == 7) pads[0].held = 0x100; // pause
     if (step == 9) pads[0].held = 0x2; // seek right
     if (step == 11) pads[0].held = 0x400; // speed
-    if (step == 13) pads[0].held = 0x800; // reset framing
+    if (step == 13 || step == 15 || step == 17) pads[0].held = 0x440; // L+X: ramp/toon/original
+    if (step == 19) pads[0].held = 0x800; // reset framing
   }
-  if (step == 15) pads[0].held = 0x200; // back to files
-  if (step >= 17) pads[0].held = 0x1000; // exit
+  if (step == 21) pads[0].held = 0x200; // back to files
+  if (step >= 23) pads[0].held = 0x1000; // exit
 }
 int main(int argc,char **argv) {
   assert(argc >= 2 && !setenv("DND_STORAGE_ROOT",argv[1],1));
@@ -54,7 +75,10 @@ int main(int argc,char **argv) {
     return 1;
   }
   if (error_mode) assert(!inspected && errors == 2 && polls == 10);
-  else assert(inspected && !errors && polls == 18);
+  else {
+    assert(inspected && !errors && polls == 24);
+    assert(effect_draws[0]>4 && effect_draws[1]==2 && effect_draws[2]==2);
+  }
   assert(!dnd_model_live_handles() && !dnd_fs_open_handles() && !dnd_draw_live());
   assert(!dnd_storage_is_mounted(6) && !dnd_async_running());
   printf("Browser AOT %s passed; collections=%zu\n",error_mode?"persistent error/retry/back/exit":"source/list/load/orbit/playback/back/exit",heap.collections);

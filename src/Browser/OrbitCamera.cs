@@ -15,12 +15,15 @@ public sealed class OrbitCamera
     public float EyeY => TargetY + Distance * MathF.Sin(Pitch);
     public float EyeZ => TargetZ + Distance * MathF.Cos(Pitch) * MathF.Cos(Yaw);
 
-    public void Reset(float x = 0, float y = 0, float z = 0, float radius = 1)
+    public void Reset(float x = 0, float y = 0, float z = 0, float radius = 1, float aspect = 4f / 3f)
     {
         if (MathF.Abs(x) > 1000000 || MathF.Abs(y) > 1000000 || MathF.Abs(z) > 1000000 || !float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z) || !(radius >= .001f && radius <= 10000))
             throw new ArgumentException("Invalid camera bounds.");
+        if (!(aspect > 0) || !float.IsFinite(aspect)) throw new ArgumentException("Invalid camera aspect.");
         TargetX = x; TargetY = y; TargetZ = z; Radius = radius;
-        Yaw = 0; Pitch = .2f; Distance = radius * 3;
+        // Fit a bounding sphere to the narrower horizontal field of view.
+        float horizontalHalfFov = MathF.Atan(MathF.Tan(MathF.PI / 6) * aspect);
+        Yaw = 0; Pitch = .2f; Distance = radius * MathF.Max(3, 1.15f / MathF.Sin(horizontalHalfFov));
     }
     public void Update(float dt, float orbitX, float orbitY, float panX, float panY, float zoom)
     {
